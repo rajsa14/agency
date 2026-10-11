@@ -1,1 +1,5 @@
 work/
+node_modules/
+.env
+.dev.vars
+.wrangler/

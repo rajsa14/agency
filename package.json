@@ -1,0 +1,21 @@
+{
+  "name": "agency",
+  "private": true,
+  "type": "module",
+  "description": "The WebTix agent office: a virtual office where AI agents take tasks and report back.",
+  "scripts": {
+    "start": "node office.mjs",
+    "build": "node office.mjs build",
+    "cf:dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.149.0"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}

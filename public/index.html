@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agency</title>
+<meta name="description" content="Virtuální kancelář AI agentů WebTix: zadávej práci, sleduj průběh a schvaluj výsledky.">
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23191a23'/%3E%3Cpath d='M16 6v20M6 16h20M9 9l14 14M23 9 9 23' stroke='%23d97757' stroke-width='3.5' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/app.css">
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }
+</script>
+</head>
+<body>
+<h1 class="sr">Agency: virtuální kancelář AI agentů</h1>
+<canvas id="scene" aria-label="Kancelář z pohledu shora. Agenty najdeš i v seznamu vlevo."></canvas>
+<div id="tags"></div>
+
+<header class="top">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 5v22M5 16h22M8.200 8.200l15.600 15.600M23.800 8.200 8.200 23.800" stroke="#d97757" stroke-width="3.6" stroke-linecap="round"/></svg>
+    <b>Agency</b>
+    <span class="mode" id="mode"></span>
+  </div>
+  <nav class="nav" id="nav" aria-label="Pohledy"></nav>
+  <div class="clock" id="clock"><time id="clock-time">--:--</time><span id="clock-note"></span></div>
+</header>
+
+<aside class="rail-wrap" aria-label="Agenti">
+  <button type="button" class="rail-toggle" id="rail-toggle" aria-label="Sbalit nebo rozbalit seznam agentů">☰</button>
+  <div class="rail" id="rail"></div>
+</aside>
+
+<div class="zoom" role="group" aria-label="Přiblížení">
+  <button type="button" id="zoom-in" aria-label="Přiblížit">+</button>
+  <button type="button" id="zoom-out" aria-label="Oddálit">−</button>
+  <button type="button" id="zoom-fit" aria-label="Celá kancelář" title="Celá kancelář">⤢</button>
+</div>
+
+<section class="chat" id="chat" aria-label="Chat s kanceláří"></section>
+<section class="sheet" id="sheet" aria-label="Přehled" hidden></section>
+<aside class="panel" id="panel" aria-labelledby="panel-title" hidden></aside>
+
+<div class="login" id="login" hidden>
+  <form class="login-card" id="login-form">
+    <h2>Agency</h2>
+    <p>Kancelář je zamčená. Zadej heslo.</p>
+    <input type="password" id="login-password" autocomplete="current-password" aria-label="Heslo" required>
+    <button type="submit" class="btn primary">Vstoupit</button>
+  </form>
+  <p class="login-note" id="login-note" role="status"></p>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<p class="fallback" id="fallback" hidden>Kancelář potřebuje svůj server. Ve složce projektu spusť <code>node office.mjs</code> a otevři <code>http://localhost:5190</code>.</p>
+<script>if (location.protocol === 'file:') document.getElementById('fallback').hidden = false</script>
+<script src="js/avatars.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

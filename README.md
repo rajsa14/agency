@@ -1,58 +1,94 @@
 # Agency
 
-The office of the WebTix agent team, in 3D. Every agent is a file in `agents/`; the office shows who sits where, what each one does and what they are working on, and lets you change all of it.
+Virtuální kancelář AI agentů WebTix. Díváš se na ni shora, každý agent má svůj stůl, a přímo z webu mu zadáváš práci, sleduješ průběh a schvaluješ výsledky. Úkoly zpracovává skutečný model (Claude přes Anthropic API); nic se nepředstírá.
 
-## Open the office
+## Spuštění na počítači
+
+```bash
+npm install
+```
 
 ```bash
 node office.mjs
 ```
 
-Then go to http://localhost:5190. Drag to look around, scroll to zoom, click someone (or pick them in the bar at the bottom).
+Pak otevři http://localhost:5190. Server je potřeba, protože kancelář není jen stránka: ukládá úkoly do databáze, volá AI a drží API klíč mimo prohlížeč. Samotné `public/index.html` otevřené jako soubor proto nefunguje.
 
-The office needs this little server and an internet connection (the 3D library loads from a CDN). Opening `index.html` as a file does not work.
+Lokálně se nepřihlašuje (server poslouchá jen na tomto počítači) a data jsou v `work/agency.db`.
 
-## What you can do
+## Aby agenti opravdu pracovali
 
-- **Change what someone is doing.** Under *Doing now* pick At the desk, Coffee, Walk, Chat or Dance and they go and do it. *Own choice* lets them decide: mostly at the desk, with short breaks.
-- **Give a task.** Type it under *Task* and press *Give task*. It waits in the queue with a yellow "Queued" bubble over the agent.
-- **Have the tasks carried out.** Tell Claude Code: **run the agency** (or `/run-agency`). Claude hands each queued task to the right agent, the agent turns green and types while it works, and the result appears under the task in the office. Results are also saved in `work/results/`.
-- **Change a function.** *Change function* edits the desk label, department, avatar, the "use when" line and the full instructions. Saving writes the file in `agents/` and installs it into `~/.claude/agents`, so Claude Code uses the new version from its next session.
+Vytvoř ve složce projektu soubor `.env`:
 
-## Working hours
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
 
-The clock is in the top right corner. The office is open 06:00 to 22:00. Outside those hours everyone sleeps at their desk, the lights are off, and `node office.mjs next` hands out no tasks, so nothing new starts. Tasks given at night wait for the morning.
+a spusť kancelář znovu. Klíč zůstává na serveru, do prohlížeče se nikdy neposílá. Bez klíče máš dvě možnosti:
 
-Add `?time=23:30` to the address to preview how the office looks at another hour. This only changes the picture; the task queue always follows the real clock. The hours are `OPENS` and `CLOSES` at the top of `office.mjs` (and `isOpen` in `office.js` for the picture).
+- **Vývojový režim** (Nastavení → AI poskytovatelé). Úkoly projdou celým postupem, ale výsledek je označený ukázkový text. Slouží k vyzkoušení, ne k práci.
+- **Claude Code jako pracovník.** Úkol dej „Jen do fronty“ a v Claude Code řekni `run the agency`. Úkoly pak zpracují tvoji Claude Code agenti a výsledky se vrátí ke schválení. Funguje jen s lokální kanceláří.
 
-## The agent files
+## Jak se s kanceláří pracuje
 
-Each `agents/*.md` is a normal Claude Code agent with a few extra lines in its header that place it in the office:
+- **Kancelář.** Tažením posouváš, kolečkem nebo tlačítky vpravo přibližuješ, pravým tlačítkem lehce otáčíš. Kliknutím na agenta (nebo v seznamu vlevo) otevřeš jeho profil a pohled se na něj přiblíží.
+- **Zadání úkolu.** V profilu agenta napiš zadání, případně prioritu, termín, kontext, textové přílohy a na které úkoly navazuje. „Zadat a spustit“ ho pustí hned, „Jen do fronty“ počká na ruční spuštění.
+- **Průběh a výsledek.** V detailu úkolu vidíš text, jak ho agent píše, všechny běhy (model, čas, tokeny) a historii změn. Úkol jde pozastavit, zrušit, zkusit znovu.
+- **Schválení.** Hotový úkol čeká na tebe: schválíš ho, nebo ho s připomínkami vrátíš a agent ho přepracuje jako další verzi.
+- **Chat s kanceláří.** Dole napíšeš celý požadavek. Manažer (CEO) ho rozdělí na úkoly pro jednotlivé agenty včetně návazností a ukáže ti plán. Teprve po schválení se úkoly rozdají. Navazující úkol se spustí, až schválíš ten předchozí, a dostane jeho výsledek.
+- **Úkoly, Schválení, Historie, Nastavení** jsou v horní liště: nástěnka a seznam úkolů, fronta ke schválení, záznam všeho, co se stalo, a nastavení agentů a AI.
 
-| Key | Meaning |
+Stavy agentů (Volno, Přemýšlí, Pracuje, Čeká, Ke schválení, Dokončil, Chyba) se odvozují z jejich skutečných úkolů. Agent u stolu píše jen tehdy, když jeho úkol opravdu běží.
+
+Úkoly spouští otevřená stránka kanceláře. Když ji zavřeš, rozběhnutý úkol se dokončí nebo po chvíli označí jako přerušený (dá se spustit znovu) a čekající úkoly počkají, až kancelář zase otevřeš.
+
+## Pracovní doba
+
+Kancelář pracuje 06:00–22:00 pražského času. Mimo tuto dobu všichni spí a server žádný úkol nespustí ani nerozplánuje; úkoly zadané v noci počkají na ráno. Hodiny jsou v `server/time.js`. Adresa s `?time=23:30` ukáže, jak kancelář vypadá v jinou hodinu (jen obraz, pravidla se řídí skutečným časem).
+
+## Nasazení (Cloudflare Workers)
+
+Web běží jako Worker `agency` a nasazuje se sám po pushi do `main`. Soubory z `public/` obsluhuje Cloudflare, vše pod `/api/` řeší `worker.js`, data jsou v databázi D1 (`wrangler.jsonc`; databázi `agency` si Wrangler při prvním nasazení vytvoří sám).
+
+V Cloudflare (Workers → agency → Settings → Variables and Secrets) nastav dvě tajné proměnné:
+
+| Proměnná | K čemu |
 |---|---|
-| `job` | The label on the desk |
-| `department` | Which floor it sits on; a new name opens a new floor |
-| `floor` | Order of the floors, highest number on top |
-| `desk` | Order of the desks on a floor, left to right |
-| `color` | Colour of the outfit and the laptop light |
-| `avatar` | `helper` or `claude` (the CEO) |
-| `avatar_eyes` | `1` or `2` |
-| `avatar_hair` | `spikes`, `tuft`, `parting`, `curl`, `bald` |
-| `avatar_prop` | `clipboard`, `hardhat`, `pencil`, `check`, `magnifier`, `envelope`, `megaphone`, `none` |
+| `ADMIN_PASSWORD` | Heslo do kanceláře. Bez něj je web jen k nahlédnutí a nic nejde zadat. |
+| `ANTHROPIC_API_KEY` | Klíč, se kterým agenti pracují. Bez něj se žádný úkol nespustí. |
 
-Everything below the header is the agent's function: the instructions it works by.
+Volitelně `SESSION_SECRET` (jinak se podpis přihlášení odvozuje z hesla). Build nastavení ve Workers Builds: deploy command `npx wrangler deploy`, build command žádný.
 
-To hire someone, add a new `.md` file with the same header. To let someone go, delete the file here and in `~/.claude/agents`.
+Lokální zkouška produkční varianty:
 
-## Commands
+```bash
+npx wrangler dev
+```
 
-| Command | What it does |
+(heslo pro ni dej do souboru `.dev.vars` jako `ADMIN_PASSWORD=...`).
+
+## Jak je to postavené
+
+| Soubor | Co dělá |
 |---|---|
-| `node office.mjs` | Opens the office |
-| `node office.mjs build` | Regenerates `data.js` after editing agent files by hand |
-| `node office.mjs sync` | Installs every agent and the `run-agency` skill into `~/.claude` |
-| `node office.mjs queue` | Lists the tasks |
-| `node office.mjs next` | Hands out the next queued task (used by `run-agency`) |
-| `node office.mjs done <id>` | Marks a task finished once its result is in `work/results/<id>.md` |
-| `node office.mjs fail <id> <reason>` | Marks a task failed |
+| `office.mjs` | Lokální server (Node) a příkazy `build`, `sync`, `queue`, `next`, `done`, `fail` |
+| `worker.js`, `wrangler.jsonc` | Vstup a konfigurace pro Cloudflare |
+| `server/app.js` | Celé API: agenti, úkoly, běhy, schvalování, plány manažera, historie |
+| `server/ai.js` | AI poskytovatelé: Anthropic (oficiální SDK, streamování, hledání na webu) a vývojový režim |
+| `server/db.js` | Tabulky a migrace; stejný SQL běží na D1 i na lokálním SQLite |
+| `server/auth.js`, `server/time.js` | Přihlášení heslem, pracovní doba |
+| `server/seed.js` | Agenti, se kterými začíná nová databáze (generuje se z `agents/*.md`) |
+| `public/js/scene.js`, `characters.js` | Izometrická kancelář ve WebGL (three.js z CDN), nábytek, chůze a chování postav |
+| `public/js/store.js` | Stav stránky, volání API, spouštění úkolů |
+| `public/js/panels.js`, `views.js`, `chat.js` | Profil agenta a detail úkolu, nástěnka a další přehledy, chat |
+
+## Agenti
+
+Nová databáze začíná s agenty z `agents/*.md`. Dál je spravuješ v kanceláři (Nastavení → Agenti): role, oddělení, odpovědnost, systémové instrukce, model, hledání na webu, vzhled. „Přidat agenta“ přijme nového. Agent, který má svůj soubor v `agents/`, se při úpravě v lokální kanceláři do souboru zapíše a nainstaluje se i do Claude Code.
+
+| Příkaz | Co dělá |
+|---|---|
+| `node office.mjs build` | Přegeneruje `server/seed.js` ze souborů v `agents/` |
+| `node office.mjs sync` | Nainstaluje agenty a skill `run-agency` do `~/.claude` |
+
+Agenti mají ve webové kanceláři jediný skutečný nástroj: hledání na webu (dá se u každého vypnout). K souborům, prohlížeči ani odesílání zpráv přístup nemají, takže cokoli napíšou, je návrh, který schvaluješ ty.
