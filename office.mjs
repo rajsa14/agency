@@ -1,21 +1,35 @@
 #!/usr/bin/env node
 // The agency office.
-//   node office.mjs         open the office at http://localhost:5190 with editing switched on
-//   node office.mjs build   regenerate data.js from agents/*.md (for the read-only page)
-//   node office.mjs sync    install agents/*.md into ~/.claude/agents so Claude Code uses them
+//   node office.mjs              open the office at http://localhost:5190 with editing switched on
+//   node office.mjs build        regenerate data.js from agents/*.md (for the read-only page)
+//   node office.mjs sync         install agents/*.md and the run-agency skill into ~/.claude
+//   node office.mjs queue        list the tasks given in the office
+//   node office.mjs next         hand out the next queued task (nothing is handed out 22:00-06:00)
+//   node office.mjs done <id>    mark a task finished; its result is work/results/<id>.md
+//   node office.mjs fail <id> <reason>
 import { createServer } from 'node:http'
-import { readFileSync, writeFileSync, readdirSync, copyFileSync, mkdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, readdirSync, copyFileSync, mkdirSync, existsSync, rmSync } from 'node:fs'
 import { join, dirname, extname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 
 const ROOT = dirname(fileURLToPath(import.meta.url))
 const AGENTS = join(ROOT, 'agents')
-const INSTALLED = join(homedir(), '.claude', 'agents')
+const WORK = join(ROOT, 'work')
+const RESULTS = join(WORK, 'results')
+const STATE = join(WORK, 'state.json')
+const SKILL = join(ROOT, '.claude', 'skills', 'run-agency', 'SKILL.md')
+const HOME = join(homedir(), '.claude')
 const PORT = 5190
 
 const HAIR = ['spikes', 'tuft', 'parting', 'curl', 'bald']
 const PROPS = ['clipboard', 'hardhat', 'pencil', 'check', 'magnifier', 'envelope', 'megaphone', 'none']
+const ACTIVITIES = ['auto', 'desk', 'coffee', 'walk', 'chat', 'dance']
+
+// Nobody works between 22:00 and 06:00.
+const OPENS = 6
+const CLOSES = 22
+const isOpen = (d = new Date()) => d.getHours() >= OPENS && d.getHours() < CLOSES
 
 const split = (raw) => raw.replace(/\r\n/g, '\n').match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/)
 
@@ -65,9 +79,13 @@ function build() {
 }
 
 function sync(only) {
-  mkdirSync(INSTALLED, { recursive: true })
+  mkdirSync(join(HOME, 'agents'), { recursive: true })
   const list = only ? [only] : files()
-  for (const f of list) copyFileSync(join(AGENTS, f), join(INSTALLED, f))
+  for (const f of list) copyFileSync(join(AGENTS, f), join(HOME, 'agents', f))
+  if (!only) {
+    mkdirSync(join(HOME, 'skills', 'run-agency'), { recursive: true })
+    copyFileSync(SKILL, join(HOME, 'skills', 'run-agency', 'SKILL.md'))
+  }
   return list
 }
 
@@ -114,7 +132,70 @@ function save(file, changes) {
   writeFileSync(path, `---\n${lines.join('\n')}\n---\n\n${body}\n`)
 }
 
-const STATIC = { '/': 'index.html', '/office.css': 'office.css', '/office.js': 'office.js', '/avatars.js': 'avatars.js', '/data.js': 'data.js' }
+// ---------- what everyone is doing: activities and the task queue ----------
+function loadState() {
+  try {
+    const s = JSON.parse(readFileSync(STATE, 'utf8'))
+    return { activities: s.activities || {}, tasks: s.tasks || [] }
+  } catch {
+    return { activities: {}, tasks: [] }
+  }
+}
+
+function saveState(state) {
+  mkdirSync(RESULTS, { recursive: true })
+  writeFileSync(STATE, JSON.stringify(state, null, 1))
+}
+
+const resultPath = (id) => join(RESULTS, `${id}.md`)
+
+function addTask(file, text) {
+  const task = String(text ?? '').replace(/\r\n/g, '\n').trim()
+  if (!task || task.length > 4000) throw new Error('task must be 1-4000 characters')
+  if (!files().includes(file)) throw new Error('no such agent')
+  const state = loadState()
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+  state.tasks.push({ id, agent: file, task, status: 'queued', created: new Date().toISOString(), started: null, finished: null, error: null })
+  saveState(state)
+}
+
+function changeTask(id, change) {
+  const state = loadState()
+  const task = state.tasks.find((t) => t.id === id)
+  if (!task) throw new Error('no such task')
+  change(task, state)
+  saveState(state)
+  return task
+}
+
+function nextTask() {
+  if (!isOpen()) return { closed: true, opens: `${String(OPENS).padStart(2, '0')}:00` }
+  const state = loadState()
+  const busy = new Set(state.tasks.filter((t) => t.status === 'running').map((t) => t.agent))
+  const task = state.tasks.find((t) => t.status === 'queued' && !busy.has(t.agent))
+  if (!task) return { none: true }
+  const agent = read(task.agent)
+  if (!agent) {
+    task.status = 'failed'
+    task.error = 'agent file is gone'
+    saveState(state)
+    return nextTask()
+  }
+  task.status = 'running'
+  task.started = new Date().toISOString()
+  saveState(state)
+  mkdirSync(join(WORK, 'files'), { recursive: true })
+  return { id: task.id, agent: agent.name, task: task.task, result: resultPath(task.id), files: join(WORK, 'files') }
+}
+
+const STATIC = {
+  '/': 'index.html',
+  '/office.css': 'office.css',
+  '/office.js': 'office.js',
+  '/characters.js': 'characters.js',
+  '/avatars.js': 'avatars.js',
+  '/data.js': 'data.js',
+}
 const TYPES = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript' }
 
 function serve() {
@@ -128,38 +209,76 @@ function serve() {
     // The server writes files, so it answers only to this machine's own page.
     if (!hosts.includes(req.headers.host)) return send(403, { error: 'forbidden' })
     const path = new URL(req.url, 'http://x').pathname
+    const state = () => ({ ...loadState(), open: isOpen(), hours: [OPENS, CLOSES] })
 
-    if (req.method === 'GET' && STATIC[path]) {
-      const name = STATIC[path]
-      return send(200, readFileSync(join(ROOT, name), 'utf8'), TYPES[extname(name)])
+    if (req.method === 'GET') {
+      if (STATIC[path]) return send(200, readFileSync(join(ROOT, STATIC[path]), 'utf8'), TYPES[extname(STATIC[path])])
+      if (path === '/api/agents') return send(200, roster())
+      if (path === '/api/state') return send(200, state())
+      const result = path.match(/^\/api\/tasks\/([a-z0-9]+)\/result$/)
+      if (result) return existsSync(resultPath(result[1])) ? send(200, readFileSync(resultPath(result[1]), 'utf8'), 'text/plain') : send(404, { error: 'no result yet' })
+      return send(404, { error: 'not found' })
     }
-    if (req.method === 'GET' && path === '/api/agents') return send(200, roster())
 
-    const target = path.match(/^\/api\/agents\/([a-z0-9-]+\.md)$/)
-    if (req.method === 'PUT' && target) {
-      if (req.headers.origin !== `http://${req.headers.host}`) return send(403, { error: 'forbidden' })
-      if (!files().includes(target[1])) return send(404, { error: 'no such agent' })
-      let raw = ''
-      req.on('data', (c) => {
-        raw += c
-        if (raw.length > 300_000) req.destroy()
-      })
-      req.on('end', () => {
-        try {
-          save(target[1], JSON.parse(raw))
-          sync(target[1])
-          send(200, build())
-        } catch (e) {
-          send(400, { error: e.message })
+    if (req.headers.origin !== `http://${req.headers.host}`) return send(403, { error: 'forbidden' })
+    let raw = ''
+    req.on('data', (c) => {
+      raw += c
+      if (raw.length > 300_000) req.destroy()
+    })
+    req.on('end', () => {
+      try {
+        const data = raw ? JSON.parse(raw) : {}
+        let m
+        if (req.method === 'PUT' && (m = path.match(/^\/api\/agents\/([a-z0-9-]+\.md)$/))) {
+          if (!files().includes(m[1])) return send(404, { error: 'no such agent' })
+          save(m[1], data)
+          sync(m[1])
+          return send(200, build())
         }
-      })
-      return
-    }
-    send(404, { error: 'not found' })
+        if (req.method === 'PUT' && (m = path.match(/^\/api\/activity\/([a-z0-9-]+\.md)$/))) {
+          if (!files().includes(m[1]) || !ACTIVITIES.includes(data.activity)) return send(400, { error: 'unknown agent or activity' })
+          const s = loadState()
+          s.activities[m[1]] = data.activity
+          saveState(s)
+          return send(200, state())
+        }
+        if (req.method === 'POST' && path === '/api/tasks') {
+          addTask(data.agent, data.task)
+          return send(200, state())
+        }
+        if (req.method === 'POST' && (m = path.match(/^\/api\/tasks\/([a-z0-9]+)\/requeue$/))) {
+          changeTask(m[1], (t) => Object.assign(t, { status: 'queued', started: null, finished: null, error: null }))
+          return send(200, state())
+        }
+        if (req.method === 'DELETE' && (m = path.match(/^\/api\/tasks\/([a-z0-9]+)$/))) {
+          changeTask(m[1], (t, s) => s.tasks.splice(s.tasks.indexOf(t), 1))
+          rmSync(resultPath(m[1]), { force: true })
+          return send(200, state())
+        }
+        send(404, { error: 'not found' })
+      } catch (e) {
+        send(400, { error: e.message })
+      }
+    })
   }).listen(PORT, '127.0.0.1', () => console.log(`Agency office open at http://localhost:${PORT}`))
 }
 
-const command = process.argv[2]
-if (command === 'build') console.log(`data.js: ${build().length} agents`)
-else if (command === 'sync') console.log(`Installed into ${INSTALLED}:\n  ${sync().join('\n  ')}`)
-else serve()
+const [command, id, ...rest] = process.argv.slice(2)
+try {
+  if (command === 'build') console.log(`data.js: ${build().length} agents`)
+  else if (command === 'sync') console.log(`Installed into ${HOME}:\n  ${sync().join('\n  ')}\n  skills/run-agency`)
+  else if (command === 'queue') console.log(JSON.stringify({ open: isOpen(), tasks: loadState().tasks }, null, 1))
+  else if (command === 'next') console.log(JSON.stringify(nextTask(), null, 1))
+  else if (command === 'done') {
+    if (!existsSync(resultPath(id))) throw new Error(`write the result to ${resultPath(id)} first`)
+    changeTask(id, (t) => Object.assign(t, { status: 'done', finished: new Date().toISOString(), error: null }))
+    console.log(`done ${id}`)
+  } else if (command === 'fail') {
+    changeTask(id, (t) => Object.assign(t, { status: 'failed', finished: new Date().toISOString(), error: rest.join(' ').slice(0, 500) || 'failed' }))
+    console.log(`failed ${id}`)
+  } else serve()
+} catch (e) {
+  console.error(e.message)
+  process.exit(1)
+}

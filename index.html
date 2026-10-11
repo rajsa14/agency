@@ -4,22 +4,25 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agency</title>
-<meta name="description" content="The office of the WebTix agent team: who sits where and what each one does.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23191a23'/%3E%3Cpath d='M16 6v20M6 16h20M9 9l14 14M23 9 9 23' stroke='%23d97757' stroke-width='3.500' stroke-linecap='round'/%3E%3C/svg%3E">
+<meta name="description" content="The office of the WebTix agent team: who sits where, what each one does and what they are working on.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23191a23'/%3E%3Cpath d='M16 6v20M6 16h20M9 9l14 14M23 9 9 23' stroke='%23d97757' stroke-width='3.5' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="office.css">
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }
+</script>
 </head>
 <body>
-<div class="sky" aria-hidden="true"></div>
-<main>
-  <h1 class="sign" aria-label="Agency"><span>A</span><span>G</span><span>E</span><span>N</span><span>C</span><span>Y</span></h1>
-  <div class="building" id="building"></div>
-</main>
-<div class="street" aria-hidden="true"></div>
+<h1 class="sr">Agency</h1>
+<canvas id="scene" aria-label="The agency office in 3D. Use the staff list to pick someone."></canvas>
+<div id="bubbles" aria-hidden="true"></div>
 <p class="mode" id="mode"></p>
-<div class="scrim" id="scrim" hidden></div>
-<aside class="panel" id="panel" role="dialog" aria-modal="true" aria-labelledby="panel-title" hidden></aside>
+<div class="clock" id="clock"><time id="clock-time">--:--</time><span id="clock-note"></span></div>
+<nav class="dock" id="dock" aria-label="Staff"></nav>
+<aside class="panel" id="panel" aria-labelledby="panel-title" hidden></aside>
+<p class="fallback" id="fallback" hidden>The office needs its little server. Run <code>node office.mjs</code> in this folder and open <code>http://localhost:5190</code>.</p>
+<script>if (location.protocol === 'file:') document.getElementById('fallback').hidden = false</script>
 <script src="data.js"></script>
 <script src="avatars.js"></script>
-<script src="office.js"></script>
+<script type="module" src="office.js"></script>
 </body>
 </html>
